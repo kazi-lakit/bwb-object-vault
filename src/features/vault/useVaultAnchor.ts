@@ -1,23 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { blocksClient } from "../../lib/blocks/client";
-import { VaultError } from "./vaultApi";
 
-// Every project ships pre-existing, platform-managed top-level directories
-// (e.g. "Cloud") -- apps are not meant to create a second true root of their
-// own (that's an owner-only capability per blocks-data-storage). This
-// resolves that shared directory once per session, purely as the technical
-// parent every user's own personal drive folder is created under during
-// drive setup (see useDriveSetup) -- it is never itself what a signed-in
-// user browses as "My Drive".
+// This project's platform-managed "Cloud" root directory -- every user's
+// personal drive folder is created under it during drive setup (see
+// useDriveSetup). Its id is fixed for this project rather than discovered at
+// runtime: listing top-level storage objects to find it dynamically proved
+// unreliable, and apps aren't meant to create a second true root of their
+// own anyway (that's an owner-only capability per blocks-data-storage).
+const CLOUD_ROOT_DIRECTORY_ID = "7C7FA2D4-91E8-4BEB-BC6C-5D7A67F8E3A9";
+
 export function useVaultAnchor() {
   return useQuery({
-    queryFn: async () => {
-      const page = await blocksClient.data.objects.list({ limit: 200, moduleName: 8 });
-      const defaults = page.items.filter((item) => item.type === "directory" && item.isDefault);
-      const anchor = defaults.find((item) => item.name === "Cloud") ?? defaults[0];
-      if (!anchor) throw new VaultError("This project has no default storage directory to anchor a drive on.");
-      return anchor;
-    },
+    queryFn: async () => ({ itemId: CLOUD_ROOT_DIRECTORY_ID }),
     queryKey: ["vault", "anchor"],
     staleTime: Infinity
   });
