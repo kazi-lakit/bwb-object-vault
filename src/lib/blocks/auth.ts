@@ -38,7 +38,11 @@ function scheduleProactiveRefresh(accessToken: string): void {
 
   const delay = Math.max(expiryMs - Date.now() - PROACTIVE_REFRESH_SKEW_MS, MIN_PROACTIVE_REFRESH_DELAY_MS);
   proactiveRefreshTimer = setTimeout(() => {
-    void forceRefreshAccessToken();
+    // Only ever scheduled from persistTokens, which only runs when a real
+    // access token was cached -- an explicit-token tenant, so there is
+    // always a refresh token to spend here.
+    const refreshToken = getRefreshToken();
+    if (refreshToken) void dedupedRefresh(refreshToken);
   }, delay);
 }
 
@@ -108,64 +112,51 @@ function clearLocalTokens(): void {
   sessionStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
-// Passed to createBlocksClient as the `accessToken` resolver: returns the
-// cached token when it's still fresh, otherwise refreshes it through
-// blocksClient.auth.oidc.refreshToken() -- concurrent callers share one
-// in-flight refresh instead of racing duplicate requests. Resolves to
-// undefined in the default cookie flow (nothing cached, nothing to
-// refresh); the SDK still sends the session cookie on every request, so
-// protected calls keep working without an Authorization header.
+// Passed to createBlocksClient as the `accessToken` resolver -- called
+// before EVERY outgoing request, including auth endpoints like
+// `auth.userInfo()`/`auth.isAuthenticated()` themselves. That's exactly why
+// this must stay a pure, no-network-call no-op when there's no refresh
+// token cached: in the default cookie flow that's every single call, and
+// calling back into any Blocks API from here would resolve its own bearer
+// token through this same function -- an infinite loop that never sends a
+// real request and eventually crashes the tab. (Learned this the hard way:
+// an earlier version called `isAuthenticated()` from here "to reconfirm the
+// session," which recurses through exactly that path.)
 export async function getValidAccessToken(): Promise<string | undefined> {
   const current = getAccessToken();
   if (current) return current;
-  return forceRefreshAccessToken();
+
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return undefined; // cookie flow: nothing to attach, the cookie does the work
+  return dedupedRefresh(refreshToken);
 }
 
-// Passed to createBlocksClient as `onUnauthorized`: unlike getValidAccessToken,
-// this skips the "is the cached token still fresh" check and always goes
-// straight to a refresh -- a 401 means the server already disagreed with our
-// local judgment of freshness, so re-checking it would just resend the same
-// rejected token. Still funnels through the same refreshInFlight guard, so a
-// burst of concurrent 401s (and any proactive caller racing them) share one
-// refresh attempt instead of firing one each.
-//
-// Two flows share this function, because a 401 means the same thing in both
-// ("the access side of the session is no longer valid, try to renew it"),
-// even though only one of them has an actual refresh token to spend:
-//   - Explicit-token tenants: spend the cached refresh token against the
-//     OIDC token endpoint (refreshAccessToken below) -- a real refresh-token
-//     grant that returns a new bearer token the SDK can retry the call with.
-//   - Default cookie-flow tenants: there is no client-visible refresh token
-//     to spend (by design -- see getRefreshToken), so "attempt a refresh"
-//     instead means asking IAM whether the httpOnly session cookie is still
-//     valid. If it isn't, that's a real expiry -- treat it exactly like a
-//     failed refresh (clear state, tell AuthProvider) so RequireAuth bounces
-//     to /login immediately rather than waiting for the next 5-minute poll.
-export async function forceRefreshAccessToken(): Promise<string | undefined> {
+// Passed to createBlocksClient as `onUnauthorized` -- called only once a
+// request has already come back 401, so unlike getValidAccessToken this is
+// allowed to treat "no refresh token" as a real, final answer instead of a
+// quiet no-op: the server just said this exact session is invalid, cookie
+// included, so there is nothing left to verify. (Deliberately does NOT call
+// any Blocks API to double-check -- see getValidAccessToken's comment for
+// why that recurses.)
+export async function handleUnauthorized(): Promise<string | undefined> {
   const refreshToken = getRefreshToken();
+  if (refreshToken) return dedupedRefresh(refreshToken);
 
+  clearLocalTokens();
+  notifySessionExpired();
+  return undefined;
+}
+
+// Shared by both entry points above so a burst of concurrent 401s (and any
+// proactive caller racing them) spend one refresh-token grant instead of one
+// each.
+function dedupedRefresh(refreshToken: string): Promise<string | undefined> {
   if (!refreshInFlight) {
-    refreshInFlight = (refreshToken ? refreshAccessToken(refreshToken) : reconfirmCookieSession()).finally(() => {
+    refreshInFlight = refreshAccessToken(refreshToken).finally(() => {
       refreshInFlight = undefined;
     });
   }
-
   return refreshInFlight;
-}
-
-async function reconfirmCookieSession(): Promise<undefined> {
-  const stillValid = await blocksClient.auth.isAuthenticated().catch(() => false);
-  if (!stillValid) {
-    clearLocalTokens();
-    notifySessionExpired();
-  }
-  // Never a bearer token to hand back here -- even when the cookie session
-  // is confirmed still valid, the SDK's http client only retries the
-  // originally-401'd call when onUnauthorized resolves to a real token
-  // string (see @seliseblocks/client's http-client.js), which a cookie-only
-  // session never has. The caller's own request will simply fail this once;
-  // the next user-initiated call goes out fresh and succeeds normally.
-  return undefined;
 }
 
 async function refreshAccessToken(refreshToken: string): Promise<string | undefined> {

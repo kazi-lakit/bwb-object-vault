@@ -1,6 +1,6 @@
 import { createBlocksClient } from "@seliseblocks/client";
 import { blocksConfig } from "./config";
-import { forceRefreshAccessToken, getValidAccessToken } from "./auth";
+import { getValidAccessToken, handleUnauthorized } from "./auth";
 
 // Single Blocks API entry point for this app -- every Auth, IAM, Data, and
 // Localization call goes through this client, never a hand-written fetch().
@@ -15,7 +15,7 @@ export const blocksClient = createBlocksClient({
   accessToken: () => getValidAccessToken(),
   apiUrl: blocksConfig.apiUrl,
   appDomain: blocksConfig.appDomain,
-  onUnauthorized: () => forceRefreshAccessToken(),
+  onUnauthorized: () => handleUnauthorized(),
   oidc: {
     clientId: blocksConfig.oidcClientId,
     scope: blocksConfig.oidcScope,
