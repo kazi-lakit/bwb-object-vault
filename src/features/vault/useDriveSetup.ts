@@ -28,7 +28,12 @@ export function useDriveSetup() {
 
   const setupQuery = useQuery({
     enabled: Boolean(userId),
-    queryFn: () => getMyDriveSetup(userId!),
+    // TanStack Query v5 throws if a queryFn resolves to `undefined` -- and
+    // "no record yet" (a brand new user) is exactly that case -- so coerce
+    // it to `null` rather than let a perfectly normal result be treated as
+    // a query error (which would surface an error screen instead of the
+    // setup prompt).
+    queryFn: async () => (await getMyDriveSetup(userId!)) ?? null,
     queryKey: ["vault", "drive-setup", userId]
   });
 
@@ -42,7 +47,7 @@ export function useDriveSetup() {
     setError(undefined);
     setIsCompleting(true);
     try {
-      let current: DriveSetupRecord | undefined = record;
+      let current: DriveSetupRecord | undefined = record ?? undefined;
 
       if (!current) {
         const displayName = userDisplayName(me.data?.data) || me.data?.data?.email || "user";
