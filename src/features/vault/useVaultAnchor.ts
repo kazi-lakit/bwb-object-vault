@@ -12,7 +12,7 @@ import { VaultError } from "./vaultApi";
 export function useVaultAnchor() {
   return useQuery({
     queryFn: async () => {
-      const page = await blocksClient.data.objects.list({ limit: 200 });
+      const page = await blocksClient.data.objects.list({ limit: 200, moduleName: 8 });
       const defaults = page.items.filter((item) => item.type === "directory" && item.isDefault);
       const anchor = defaults.find((item) => item.name === "Cloud") ?? defaults[0];
       if (!anchor) throw new VaultError("This project has no default storage directory to anchor a drive on.");

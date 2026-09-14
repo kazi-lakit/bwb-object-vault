@@ -36,7 +36,7 @@ export async function listObjects(params: {
   parentDirectoryId?: string;
   search?: string;
 }) {
-  return blocksClient.data.objects.list({ limit: PAGE_LIMIT, ...params });
+  return blocksClient.data.objects.list({ limit: PAGE_LIMIT, moduleName: 8, ...params });
 }
 
 export async function searchObjects(params: { cursor?: string; directoryId?: string; limit?: number; query: string }) {
