@@ -4,14 +4,16 @@ import { useActiveOrganization } from "../organizations/ActiveOrganizationProvid
 import { FolderPlus, Search } from "lucide-react";
 import { PageHeader } from "../../shared/ui/PageHeader";
 import { ActionButton } from "../../shared/ui/ActionButton";
+import { Alert } from "../../shared/ui/Alert";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ErrorState } from "../../shared/ui/ErrorState";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { LoadingScreen } from "../../shared/ui/LoadingScreen";
+import { useCurrentUser } from "../profile/useCurrentUser";
 import { useVaultRoot } from "./useVaultRoot";
 import { useDirectoryListing } from "./useDirectoryListing";
-import { createFolder, deleteObject, getFileDownloadUrl, uploadFile } from "./vaultApi";
-import { resourceTypeOf, type PathEntry, type VaultObject } from "./types";
+import { createFolder, deleteObject, getFileDownloadUrl, makePrivate, uploadFile } from "./vaultApi";
+import { resourceTypeOf, type PathEntry, type VaultObject, type VaultResourceType } from "./types";
 import { Breadcrumbs } from "./components/Breadcrumbs";
 import { VaultObjectList } from "./components/VaultObjectList";
 import { NewFolderDialog } from "./components/NewFolderDialog";
@@ -22,6 +24,7 @@ import { PreviewModal } from "./components/PreviewModal";
 export function VaultPage() {
   const root = useVaultRoot();
   const { activeOrgId } = useActiveOrganization();
+  const me = useCurrentUser();
   const [path, setPath] = useState<PathEntry[]>([]);
   const [search, setSearch] = useState("");
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -29,6 +32,7 @@ export function VaultPage() {
   const [sharing, setSharing] = useState<VaultObject>();
   const [deleting, setDeleting] = useState<VaultObject>();
   const [isDragging, setIsDragging] = useState(false);
+  const [warning, setWarning] = useState<string>();
   const queryClient = useQueryClient();
 
   // A folder deeper than the root belongs to a specific org's directory
@@ -37,13 +41,34 @@ export function VaultPage() {
   useEffect(() => {
     setPath([]);
     setSearch("");
+    setWarning(undefined);
   }, [activeOrgId]);
 
   const currentDirectoryId = path.length > 0 ? path[path.length - 1]!.id : root.data?.itemId;
   const listing = useDirectoryListing(currentDirectoryId, search);
+  const isAtRoot = Boolean(root.data) && currentDirectoryId === root.data?.itemId;
 
   function invalidateListing() {
     void queryClient.invalidateQueries({ queryKey: ["vault", "objects", currentDirectoryId] });
+  }
+
+  // Everything directly under the vault root inherits Cloud's project-wide
+  // "Everyone: Edit" grant (needed so anyone can browse/create there at
+  // all) unless cut loose right away -- a folder created deeper down
+  // already inherits from an already-private parent, so only top-level
+  // items need this.
+  async function protectIfTopLevel(resourceId: string, resourceType: VaultResourceType) {
+    if (!isAtRoot) return;
+    const ownerId = me.data?.data?.itemId;
+    if (!ownerId) {
+      setWarning("Could not confirm your user id, so this item was left shared with everyone in the project. Refresh and try sharing/privacy actions again.");
+      return;
+    }
+    try {
+      await makePrivate({ ownerId, resourceId, resourceType });
+    } catch (cause) {
+      setWarning(cause instanceof Error ? cause.message : "Could not make this item private -- it may still be visible to everyone in the project.");
+    }
   }
 
   function openFolder(item: VaultObject) {
@@ -70,7 +95,12 @@ export function VaultPage() {
 
   async function uploadDroppedFiles(files: FileList) {
     if (!currentDirectoryId) return;
-    await Promise.allSettled(Array.from(files).map((file) => uploadFile({ file, parentDirectoryId: currentDirectoryId })));
+    const results = await Promise.allSettled(
+      Array.from(files).map((file) => uploadFile({ file, parentDirectoryId: currentDirectoryId }))
+    );
+    for (const result of results) {
+      if (result.status === "fulfilled") await protectIfTopLevel(result.value.fileId, "File");
+    }
     invalidateListing();
   }
 
@@ -97,10 +127,18 @@ export function VaultPage() {
         actions={
           <>
             <ActionButton variant="icon" icon={<FolderPlus size={18} />} onClick={() => setShowNewFolder(true)} title="New folder" />
-            <UploadButton parentDirectoryId={currentDirectoryId} onUploaded={invalidateListing} />
+            <UploadButton
+              parentDirectoryId={currentDirectoryId}
+              onUploaded={(fileId) => {
+                void protectIfTopLevel(fileId, "File");
+                invalidateListing();
+              }}
+            />
           </>
         }
       />
+
+      {warning ? <Alert tone="warn">{warning}</Alert> : null}
 
       <div className="toolbar">
         <div className="search-box">
@@ -150,7 +188,8 @@ export function VaultPage() {
         <NewFolderDialog
           onClose={() => setShowNewFolder(false)}
           onCreate={async (name) => {
-            await createFolder({ name, parentDirectoryId: currentDirectoryId });
+            const { directoryId } = await createFolder({ name, parentDirectoryId: currentDirectoryId });
+            await protectIfTopLevel(directoryId, "Directory");
             invalidateListing();
           }}
         />

@@ -47,7 +47,7 @@ export async function listSharedWithMe(params: { cursor?: string; limit?: number
   return blocksClient.data.objects.shared({ limit: PAGE_LIMIT, ...params });
 }
 
-export async function createFolder(params: { description?: string; name: string; parentDirectoryId?: string }) {
+export async function createFolder(params: { description?: string; name: string; parentDirectoryId?: string }): Promise<{ directoryId: string }> {
   const name = params.name.trim();
   if (!name || name === "." || name === ".." || /[/\\]/.test(name)) {
     throw new VaultError("Folder name can't be empty, \".\", \"..\", or contain a slash.");
@@ -59,7 +59,35 @@ export async function createFolder(params: { description?: string; name: string;
     parentDirectoryId: params.parentDirectoryId
   });
   assertSuccess(response, "Could not create the folder.");
-  return response;
+  const { directoryId } = response as { directoryId?: string };
+  if (!directoryId) throw new VaultError("Folder was created but no id was returned.");
+  return { directoryId };
+}
+
+// "My Drive" is anchored on a shared root ("Cloud") that every project user
+// has Edit on, so browsing/creating there works for everyone -- but a new
+// item under it inherits that same broad grant by default, which would make
+// every user's top-level folders and files visible to the whole project.
+// Call this right after creating a top-level item to keep it private again:
+// explicit ownership first (the API rejects disabling inheritance on a
+// resource with no direct grant of its own, to avoid orphaning it), then
+// cut it loose from Cloud's inherited access.
+export async function makePrivate(params: { ownerId: string; resourceId: string; resourceType: VaultResourceType }): Promise<void> {
+  const grant = await blocksClient.data.objects.grantAccess({
+    effect: "Allow",
+    permission: "Owner",
+    principalId: params.ownerId,
+    principalType: "User",
+    resourceId: params.resourceId,
+    resourceType: params.resourceType
+  });
+  assertSuccess(grant, "Could not secure ownership of this item.");
+
+  const toggled = await blocksClient.data.objects.toggleInheritance({
+    inheritsParentAccess: false,
+    resourceId: params.resourceId
+  });
+  assertSuccess(toggled, "Could not make this item private.");
 }
 
 export async function uploadFile(params: {

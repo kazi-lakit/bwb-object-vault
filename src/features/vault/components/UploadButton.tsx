@@ -12,7 +12,7 @@ export function UploadButton({
 }: {
   disabled?: boolean;
   parentDirectoryId: string | undefined;
-  onUploaded: () => void;
+  onUploaded: (fileId: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [tasks, setTasks] = useState<UploadTask[]>([]);
@@ -27,9 +27,9 @@ export function UploadButton({
       files.map(async (file, index) => {
         const taskId = newTasks[index]!.id;
         try {
-          await uploadFile({ file, parentDirectoryId });
+          const { fileId } = await uploadFile({ file, parentDirectoryId });
           setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, status: "done" } : task)));
-          onUploaded();
+          onUploaded(fileId);
         } catch (cause) {
           const message = cause instanceof Error ? cause.message : "Upload failed.";
           setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, error: message, status: "error" } : task)));
