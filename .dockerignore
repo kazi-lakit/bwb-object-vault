@@ -1,0 +1,9 @@
+.git
+.scannerwork
+node_modules
+dist
+.cert
+.env
+.env.*
+!.env.example
+*.local
