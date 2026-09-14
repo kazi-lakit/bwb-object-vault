@@ -1,0 +1,31 @@
+{
+  "schemaName": "DriveSetup",
+  "schemaType": 1,
+  "fields": [
+    {
+      "name": "UserId",
+      "type": "String",
+      "isArray": false,
+      "isPIIData": false,
+      "isUniqueData": true,
+      "description": "IAM user id that owns this drive setup record -- one record per user."
+    },
+    {
+      "name": "DirectoryName",
+      "type": "String",
+      "isArray": false,
+      "isPIIData": false,
+      "isUniqueData": true,
+      "description": "Sanitized display-name + user-id composite used as this user's drive root folder name in Blocks Storage."
+    },
+    {
+      "name": "DirectoryId",
+      "type": "String",
+      "isArray": false,
+      "isPIIData": false,
+      "isUniqueData": false,
+      "description": "Blocks Storage directory id for this user's drive root. Empty until the folder is successfully created."
+    }
+  ],
+  "collectionName": "blx_DriveSetups"
+}
