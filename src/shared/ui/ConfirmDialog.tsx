@@ -10,7 +10,7 @@ export function ConfirmDialog({
     <Modal title={title} onClose={onCancel}>
       <p>{message}</p>
       <div className="modal-actions">
-        <button className="icon-button" onClick={onCancel}>Cancel</button>
+        <button className="secondary-button" onClick={onCancel}>Cancel</button>
         <button className="primary-button danger" onClick={onConfirm}>Delete</button>
       </div>
     </Modal>

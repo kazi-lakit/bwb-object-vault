@@ -31,6 +31,38 @@ export function iconForObject(object: VaultObject): typeof File {
   return (extension && ICONS_BY_EXTENSION[extension]) || File;
 }
 
+const COLOR_CLASS_BY_EXTENSION: Record<string, string> = {
+  csv: "vault-icon-sheet",
+  doc: "vault-icon-doc",
+  docx: "vault-icon-doc",
+  gif: "vault-icon-image",
+  jpeg: "vault-icon-image",
+  jpg: "vault-icon-image",
+  mov: "vault-icon-media",
+  mp3: "vault-icon-media",
+  mp4: "vault-icon-media",
+  pdf: "vault-icon-pdf",
+  png: "vault-icon-image",
+  ppt: "vault-icon-slide",
+  pptx: "vault-icon-slide",
+  rar: "vault-icon-archive",
+  svg: "vault-icon-image",
+  txt: "vault-icon-doc",
+  wav: "vault-icon-media",
+  webp: "vault-icon-image",
+  xls: "vault-icon-sheet",
+  xlsx: "vault-icon-sheet",
+  zip: "vault-icon-archive"
+};
+
+// A Drive-style color hint by file kind, distinct from the folder color, so
+// a dense list scans faster than every row's icon reading identically.
+export function iconColorClassFor(object: VaultObject): string {
+  if (object.type === "directory") return "vault-icon-folder";
+  const extension = object.extension?.replace(/^\./, "").toLowerCase();
+  return (extension && COLOR_CLASS_BY_EXTENSION[extension]) || "vault-icon-file";
+}
+
 export function isPreviewable(object: VaultObject): "image" | "pdf" | undefined {
   const extension = object.extension?.replace(/^\./, "").toLowerCase();
   const contentType = object.contentType ?? "";

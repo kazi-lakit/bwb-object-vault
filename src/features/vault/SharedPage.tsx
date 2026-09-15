@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActiveOrganization } from "../organizations/ActiveOrganizationProvider";
+import { Share2 } from "lucide-react";
 import { PageHeader } from "../../shared/ui/PageHeader";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ErrorState } from "../../shared/ui/ErrorState";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
-import { LoadingScreen } from "../../shared/ui/LoadingScreen";
+import { ListSkeleton } from "../../shared/ui/ListSkeleton";
+import { useToast } from "../../shared/ui/toast";
 import { useDirectoryListing, useSharedWithMe } from "./useDirectoryListing";
 import { deleteObject, getFileDownloadUrl } from "./vaultApi";
 import { resourceTypeOf, type PathEntry, type VaultObject } from "./types";
@@ -23,6 +25,7 @@ export function SharedPage() {
   const [sharing, setSharing] = useState<VaultObject>();
   const [deleting, setDeleting] = useState<VaultObject>();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   useEffect(() => {
     setPath([SHARED_ROOT]);
@@ -45,15 +48,25 @@ export function SharedPage() {
   }
 
   async function handleDownload(item: VaultObject) {
-    const url = await getFileDownloadUrl(item.itemId);
-    window.open(url, "_blank", "noreferrer");
+    try {
+      const url = await getFileDownloadUrl(item.itemId);
+      window.open(url, "_blank", "noreferrer");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : `Could not download "${item.name}".`);
+    }
   }
 
   async function handleDelete() {
     if (!deleting) return;
-    await deleteObject({ permanent: false, resourceId: deleting.itemId, resourceType: resourceTypeOf(deleting) });
-    setDeleting(undefined);
-    invalidate();
+    const name = deleting.name;
+    try {
+      await deleteObject({ permanent: false, resourceId: deleting.itemId, resourceType: resourceTypeOf(deleting) });
+      setDeleting(undefined);
+      invalidate();
+      toast.success(`"${name}" moved to trash.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : `Could not delete "${name}".`);
+    }
   }
 
   return (
@@ -62,12 +75,16 @@ export function SharedPage() {
 
       {!atRoot ? <Breadcrumbs path={path} onNavigate={(index) => setPath((current) => current.slice(0, index + 1))} /> : null}
 
-      {listing.isLoading ? <LoadingScreen /> : null}
+      {listing.isLoading ? <ListSkeleton /> : null}
       {listing.isError ? (
         <ErrorState message={listing.error instanceof Error ? listing.error.message : "Could not load shared items."} onRetry={() => listing.refetch()} />
       ) : null}
       {!listing.isLoading && !listing.isError && listing.items.length === 0 ? (
-        <EmptyState title="Nothing shared yet" description="Items other people share with you, your role, or your organization will show up here." />
+        <EmptyState
+          icon={<Share2 size={26} />}
+          title="Nothing shared yet"
+          description="Items other people share with you, your role, or your organization will show up here."
+        />
       ) : null}
       {listing.items.length > 0 ? (
         <VaultObjectList

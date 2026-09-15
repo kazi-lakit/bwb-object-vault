@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActiveOrganization } from "../organizations/ActiveOrganizationProvider";
-import { FolderPlus, Search } from "lucide-react";
+import { FolderOpen, FolderPlus, Search, SearchX } from "lucide-react";
 import { PageHeader } from "../../shared/ui/PageHeader";
 import { ActionButton } from "../../shared/ui/ActionButton";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ErrorState } from "../../shared/ui/ErrorState";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { LoadingScreen } from "../../shared/ui/LoadingScreen";
+import { ListSkeleton } from "../../shared/ui/ListSkeleton";
+import { useToast } from "../../shared/ui/toast";
 import { useDriveSetup } from "./useDriveSetup";
 import { useDirectoryListing } from "./useDirectoryListing";
 import { createFolder, deleteObject, getFileDownloadUrl, uploadFile } from "./vaultApi";
@@ -31,6 +33,7 @@ export function VaultPage() {
   const [deleting, setDeleting] = useState<VaultObject>();
   const [isDragging, setIsDragging] = useState(false);
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   // A folder deeper than the root belongs to a specific org's directory
   // tree -- after switching organizations it no longer resolves, so drop
@@ -58,15 +61,25 @@ export function VaultPage() {
   }
 
   async function handleDownload(item: VaultObject) {
-    const url = await getFileDownloadUrl(item.itemId);
-    window.open(url, "_blank", "noreferrer");
+    try {
+      const url = await getFileDownloadUrl(item.itemId);
+      window.open(url, "_blank", "noreferrer");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : `Could not download "${item.name}".`);
+    }
   }
 
   async function handleDelete() {
     if (!deleting) return;
-    await deleteObject({ permanent: false, resourceId: deleting.itemId, resourceType: resourceTypeOf(deleting) });
-    setDeleting(undefined);
-    invalidateListing();
+    const name = deleting.name;
+    try {
+      await deleteObject({ permanent: false, resourceId: deleting.itemId, resourceType: resourceTypeOf(deleting) });
+      setDeleting(undefined);
+      invalidateListing();
+      toast.success(`"${name}" moved to trash.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : `Could not delete "${name}".`);
+    }
   }
 
   async function uploadDroppedFiles(files: FileList) {
@@ -127,12 +140,13 @@ export function VaultPage() {
       {search.trim() ? null : <Breadcrumbs path={breadcrumbPath} onNavigate={goToBreadcrumb} />}
 
       <div className={isDragging ? "vault-dropzone vault-dropzone-active" : "vault-dropzone"}>
-        {listing.isLoading ? <LoadingScreen /> : null}
+        {listing.isLoading ? <ListSkeleton /> : null}
         {listing.isError ? (
           <ErrorState message={listing.error instanceof Error ? listing.error.message : "Could not load this folder."} onRetry={() => listing.refetch()} />
         ) : null}
         {!listing.isLoading && !listing.isError && listing.items.length === 0 ? (
           <EmptyState
+            icon={search.trim() ? <SearchX size={26} /> : <FolderOpen size={26} />}
             title={search.trim() ? "No matches" : "This folder is empty"}
             description={search.trim() ? "Try a different search term." : "Drag files here, or use New folder / Upload above."}
           />

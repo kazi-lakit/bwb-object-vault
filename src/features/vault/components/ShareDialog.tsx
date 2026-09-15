@@ -155,7 +155,7 @@ export function ShareDialog({ object, onClose }: { object: VaultObject; onClose:
           </label>
 
           <div className="modal-actions">
-            <button type="button" className="icon-button" onClick={onClose}>Cancel</button>
+            <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
             <button type="submit" className="primary-button" disabled={submitting || !principalId}>
               {submitting ? "Sharing..." : "Share"}
             </button>

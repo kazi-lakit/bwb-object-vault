@@ -1,5 +1,5 @@
 import { Download, Eye, MoreVertical, Share2, Trash2 } from "lucide-react";
-import { formatBytes, formatDate, iconForObject, isPreviewable } from "../format";
+import { formatBytes, formatDate, iconColorClassFor, iconForObject, isPreviewable } from "../format";
 import type { VaultObject } from "../types";
 import {
   DropdownMenu,
@@ -45,7 +45,9 @@ export function VaultObjectList({
                     className="vault-name-cell"
                     onClick={() => (item.type === "directory" ? onOpen(item) : previewable ? onPreview(item) : onDownload(item))}
                   >
-                    <Icon size={18} />
+                    <span className={`vault-icon-chip ${iconColorClassFor(item)}`}>
+                      <Icon size={16} />
+                    </span>
                     <span>{item.name}</span>
                   </button>
                 </td>
