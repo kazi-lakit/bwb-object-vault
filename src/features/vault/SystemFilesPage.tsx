@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActiveOrganization } from "../organizations/ActiveOrganizationProvider";
+import { FolderPlus } from "lucide-react";
 import { PageHeader } from "../../shared/ui/PageHeader";
+import { ActionButton } from "../../shared/ui/ActionButton";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ErrorState } from "../../shared/ui/ErrorState";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { LoadingScreen } from "../../shared/ui/LoadingScreen";
 import { useDirectoryListing } from "./useDirectoryListing";
-import { deleteObject, getFileDownloadUrl } from "./vaultApi";
+import { createFolder, deleteObject, getFileDownloadUrl, uploadFile } from "./vaultApi";
 import { resourceTypeOf, type PathEntry, type VaultObject } from "./types";
 import { Breadcrumbs } from "./components/Breadcrumbs";
 import { VaultObjectList } from "./components/VaultObjectList";
+import { NewFolderDialog } from "./components/NewFolderDialog";
+import { UploadButton } from "./components/UploadButton";
 import { ShareDialog } from "./components/ShareDialog";
 import { PreviewModal } from "./components/PreviewModal";
 
@@ -29,9 +33,11 @@ const SYSTEM_FILES_ROOT_ID = "fc118fc5-8592-4b24-89fc-fc5721176af2";
 export function SystemFilesPage() {
   const { activeOrgId } = useActiveOrganization();
   const [path, setPath] = useState<PathEntry[]>([SYSTEM_ROOT]);
+  const [showNewFolder, setShowNewFolder] = useState(false);
   const [previewing, setPreviewing] = useState<VaultObject>();
   const [sharing, setSharing] = useState<VaultObject>();
   const [deleting, setDeleting] = useState<VaultObject>();
+  const [isDragging, setIsDragging] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -62,36 +68,74 @@ export function SystemFilesPage() {
     invalidate();
   }
 
+  async function uploadDroppedFiles(files: FileList) {
+    if (!currentDirectoryId) return;
+    await Promise.allSettled(Array.from(files).map((file) => uploadFile({ file, parentDirectoryId: currentDirectoryId })));
+    invalidate();
+  }
+
   return (
-    <section>
-      <PageHeader title="System Files" subtitle="Folders and files you created or have access to." />
+    <section
+      onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDragging(false);
+        if (event.dataTransfer.files.length > 0) void uploadDroppedFiles(event.dataTransfer.files);
+      }}
+    >
+      <PageHeader
+        title="System Files"
+        subtitle="Folders and files you created or have access to."
+        actions={
+          <>
+            <ActionButton variant="icon" icon={<FolderPlus size={18} />} onClick={() => setShowNewFolder(true)} title="New folder" />
+            <UploadButton parentDirectoryId={currentDirectoryId} onUploaded={invalidate} />
+          </>
+        }
+      />
 
       {!atRoot ? <Breadcrumbs path={path} onNavigate={(index) => setPath((current) => current.slice(0, index + 1))} /> : null}
 
-      {listing.isLoading ? <LoadingScreen /> : null}
-      {listing.isError ? (
-        <ErrorState message={listing.error instanceof Error ? listing.error.message : "Could not load items."} onRetry={() => listing.refetch()} />
-      ) : null}
-      {!listing.isLoading && !listing.isError && listing.items.length === 0 ? (
-        <EmptyState title="Nothing here" description="Folders and files you created or have access to will show up here." />
-      ) : null}
-      {listing.items.length > 0 ? (
-        <VaultObjectList
-          items={listing.items}
-          onOpen={openFolder}
-          onPreview={setPreviewing}
-          onDownload={handleDownload}
-          onShare={setSharing}
-          onDelete={setDeleting}
+      <div className={isDragging ? "vault-dropzone vault-dropzone-active" : "vault-dropzone"}>
+        {listing.isLoading ? <LoadingScreen /> : null}
+        {listing.isError ? (
+          <ErrorState message={listing.error instanceof Error ? listing.error.message : "Could not load items."} onRetry={() => listing.refetch()} />
+        ) : null}
+        {!listing.isLoading && !listing.isError && listing.items.length === 0 ? (
+          <EmptyState
+            title="This folder is empty"
+            description="Drag files here, or use New folder / Upload above."
+          />
+        ) : null}
+        {listing.items.length > 0 ? (
+          <VaultObjectList
+            items={listing.items}
+            onOpen={openFolder}
+            onPreview={setPreviewing}
+            onDownload={handleDownload}
+            onShare={setSharing}
+            onDelete={setDeleting}
+          />
+        ) : null}
+        {listing.hasNextPage ? (
+          <div className="pagination">
+            <span />
+            <button className="link-button" onClick={() => listing.fetchNextPage()} disabled={listing.isFetchingNextPage}>
+              {listing.isFetchingNextPage ? "Loading..." : "Load more"}
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {showNewFolder ? (
+        <NewFolderDialog
+          onClose={() => setShowNewFolder(false)}
+          onCreate={async (name) => {
+            await createFolder({ name, parentDirectoryId: currentDirectoryId });
+            invalidate();
+          }}
         />
-      ) : null}
-      {listing.hasNextPage ? (
-        <div className="pagination">
-          <span />
-          <button className="link-button" onClick={() => listing.fetchNextPage()} disabled={listing.isFetchingNextPage}>
-            {listing.isFetchingNextPage ? "Loading..." : "Load more"}
-          </button>
-        </div>
       ) : null}
 
       {previewing ? <PreviewModal object={previewing} onClose={() => setPreviewing(undefined)} /> : null}
