@@ -6,7 +6,6 @@ import { EmptyState } from "../../shared/ui/EmptyState";
 import { ErrorState } from "../../shared/ui/ErrorState";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { LoadingScreen } from "../../shared/ui/LoadingScreen";
-import { useVaultAnchor } from "./useVaultAnchor";
 import { useDirectoryListing } from "./useDirectoryListing";
 import { deleteObject, getFileDownloadUrl } from "./vaultApi";
 import { resourceTypeOf, type PathEntry, type VaultObject } from "./types";
@@ -17,15 +16,18 @@ import { PreviewModal } from "./components/PreviewModal";
 
 const SYSTEM_ROOT: PathEntry = { id: undefined, name: "System Files" };
 
-// Browses the shared "Cloud" root directly, rather than a personal drive
-// folder under it (see VaultPage) -- so this is where anything that lives
-// alongside everyone's personal folders shows up. Storage's get-objects
-// already filters to what the caller can see, so no extra ownership/access
-// filtering is needed here: a user only ever gets back items they created
-// or were granted access to.
+// This project's dedicated "System Files" directory -- a fixed id, same
+// approach as useVaultAnchor's "Cloud" id, rather than discovered at
+// runtime.
+const SYSTEM_FILES_ROOT_ID = "fc118fc5-8592-4b24-89fc-fc5721176af2";
+
+// Browses that directory directly, separate from a user's personal drive
+// folder (see VaultPage) -- so this is where anything shared at that level
+// shows up. Storage's get-objects already filters to what the caller can
+// see, so no extra ownership/access filtering is needed here: a user only
+// ever gets back items they created or were granted access to.
 export function SystemFilesPage() {
   const { activeOrgId } = useActiveOrganization();
-  const anchor = useVaultAnchor();
   const [path, setPath] = useState<PathEntry[]>([SYSTEM_ROOT]);
   const [previewing, setPreviewing] = useState<VaultObject>();
   const [sharing, setSharing] = useState<VaultObject>();
@@ -37,7 +39,7 @@ export function SystemFilesPage() {
   }, [activeOrgId]);
 
   const atRoot = path.length === 1;
-  const currentDirectoryId = atRoot ? anchor.data?.itemId : path[path.length - 1]!.id;
+  const currentDirectoryId = atRoot ? SYSTEM_FILES_ROOT_ID : path[path.length - 1]!.id;
   const listing = useDirectoryListing(currentDirectoryId, "");
 
   function invalidate() {
@@ -58,16 +60,6 @@ export function SystemFilesPage() {
     await deleteObject({ permanent: false, resourceId: deleting.itemId, resourceType: resourceTypeOf(deleting) });
     setDeleting(undefined);
     invalidate();
-  }
-
-  if (anchor.isLoading) return <LoadingScreen />;
-  if (anchor.isError) {
-    return (
-      <ErrorState
-        message={anchor.error instanceof Error ? anchor.error.message : "Could not load system files."}
-        onRetry={() => anchor.refetch()}
-      />
-    );
   }
 
   return (
