@@ -8,10 +8,12 @@ import { NotFoundPage } from "../../features/auth/NotFoundPage";
 import { ProfilePage } from "../../features/profile/ProfilePage";
 import { VaultPage } from "../../features/vault/VaultPage";
 import { SharedPage } from "../../features/vault/SharedPage";
+import { SystemFilesPage } from "../../features/vault/SystemFilesPage";
 
 const protectedRoutes = {
   "/": VaultPage,
   "/shared": SharedPage,
+  "/system-files": SystemFilesPage,
   "/profile": ProfilePage,
   "/error": ErrorPage
 };

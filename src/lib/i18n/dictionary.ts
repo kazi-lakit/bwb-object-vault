@@ -2,6 +2,7 @@ export const defaultDictionary = {
   "app.name": "Blocks App",
   "nav.myDrive": "My Drive",
   "nav.shared": "Shared",
+  "nav.systemFiles": "System Files",
   "nav.profile": "Profile",
   "nav.logout": "Log out",
   "auth.welcome": "Welcome back",
