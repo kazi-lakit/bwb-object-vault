@@ -7,13 +7,16 @@ import { ActionButton } from "../../shared/ui/ActionButton";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ErrorState } from "../../shared/ui/ErrorState";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
-import { ListSkeleton } from "../../shared/ui/ListSkeleton";
+import { GridSkeleton, ListSkeleton } from "../../shared/ui/ListSkeleton";
+import { ViewToggle } from "../../shared/ui/ViewToggle";
 import { useToast } from "../../shared/ui/toast";
 import { useDirectoryListing } from "./useDirectoryListing";
+import { useViewMode } from "./useViewMode";
 import { createFolder, deleteObject, getFileDownloadUrl, uploadFile } from "./vaultApi";
 import { resourceTypeOf, type PathEntry, type VaultObject } from "./types";
 import { Breadcrumbs } from "./components/Breadcrumbs";
 import { VaultObjectList } from "./components/VaultObjectList";
+import { VaultObjectGrid } from "./components/VaultObjectGrid";
 import { NewFolderDialog } from "./components/NewFolderDialog";
 import { UploadButton } from "./components/UploadButton";
 import { ShareDialog } from "./components/ShareDialog";
@@ -39,6 +42,7 @@ export function SystemFilesPage() {
   const [sharing, setSharing] = useState<VaultObject>();
   const [deleting, setDeleting] = useState<VaultObject>();
   const [isDragging, setIsDragging] = useState(false);
+  const [viewMode, setViewMode] = useViewMode();
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -97,6 +101,7 @@ export function SystemFilesPage() {
       }}
     >
       <PageHeader
+        icon={<FolderCog size={20} />}
         title="System Files"
         subtitle="Folders and files you created or have access to."
         actions={
@@ -107,10 +112,15 @@ export function SystemFilesPage() {
         }
       />
 
+      <div className="toolbar">
+        <span />
+        <ViewToggle value={viewMode} onChange={setViewMode} />
+      </div>
+
       {!atRoot ? <Breadcrumbs path={path} onNavigate={(index) => setPath((current) => current.slice(0, index + 1))} /> : null}
 
       <div className={isDragging ? "vault-dropzone vault-dropzone-active" : "vault-dropzone"}>
-        {listing.isLoading ? <ListSkeleton /> : null}
+        {listing.isLoading ? (viewMode === "grid" ? <GridSkeleton /> : <ListSkeleton />) : null}
         {listing.isError ? (
           <ErrorState message={listing.error instanceof Error ? listing.error.message : "Could not load items."} onRetry={() => listing.refetch()} />
         ) : null}
@@ -122,14 +132,25 @@ export function SystemFilesPage() {
           />
         ) : null}
         {listing.items.length > 0 ? (
-          <VaultObjectList
-            items={listing.items}
-            onOpen={openFolder}
-            onPreview={setPreviewing}
-            onDownload={handleDownload}
-            onShare={setSharing}
-            onDelete={setDeleting}
-          />
+          viewMode === "grid" ? (
+            <VaultObjectGrid
+              items={listing.items}
+              onOpen={openFolder}
+              onPreview={setPreviewing}
+              onDownload={handleDownload}
+              onShare={setSharing}
+              onDelete={setDeleting}
+            />
+          ) : (
+            <VaultObjectList
+              items={listing.items}
+              onOpen={openFolder}
+              onPreview={setPreviewing}
+              onDownload={handleDownload}
+              onShare={setSharing}
+              onDelete={setDeleting}
+            />
+          )
         ) : null}
         {listing.hasNextPage ? (
           <div className="pagination">

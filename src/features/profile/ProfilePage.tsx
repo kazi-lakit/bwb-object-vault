@@ -23,6 +23,7 @@ export function ProfilePage() {
   return (
     <section>
       <PageHeader
+        icon={<UserRound size={20} />}
         title={t("profile.title")}
         subtitle={t("profile.subtitle")}
         actions={<ActionButton variant="icon" onClick={() => me.refetch()} title="Refresh profile" icon={<RefreshCw size={18} />} />}

@@ -153,8 +153,9 @@ export async function searchUsers(search: string): Promise<BlocksUser[]> {
   return response.data ?? [];
 }
 
-export async function listRoles(): Promise<BlocksRole[]> {
-  const response = await blocksClient.iam.roles.list({ pageNo: 1, pageSize: 100 });
+export async function searchRoles(search: string): Promise<BlocksRole[]> {
+  if (!search.trim()) return [];
+  const response = await blocksClient.iam.roles.list({ pageNo: 1, pageSize: 10, search: search.trim() });
   return response.data ?? [];
 }
 

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { BlocksUser } from "@seliseblocks/client";
+import type { BlocksRole, BlocksUser } from "@seliseblocks/client";
 import { Modal } from "../../../shared/ui/Modal";
 import { Alert } from "../../../shared/ui/Alert";
-import { listMyOrganizations, listRoles, searchUsers, shareObject } from "../vaultApi";
+import { listMyOrganizations, searchRoles, searchUsers, shareObject } from "../vaultApi";
 import { resourceTypeOf, type VaultObject, type VaultPermission, type VaultPrincipalType } from "../types";
 
 const PERMISSIONS: VaultPermission[] = ["View", "Download", "Edit", "Delete", "Manage"];
@@ -13,25 +13,34 @@ function userLabel(user: BlocksUser): string {
   return name ? `${name} (${user.email ?? ""})` : user.email ?? String(user.itemId);
 }
 
+function roleLabel(role: BlocksRole): string {
+  return role.name ?? role.slug ?? String(role.itemId);
+}
+
 export function ShareDialog({ object, onClose }: { object: VaultObject; onClose: () => void }) {
   const [principalType, setPrincipalType] = useState<VaultPrincipalType>("User");
   const [permission, setPermission] = useState<VaultPermission>("View");
   const [userQuery, setUserQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState<BlocksUser>();
+  const [roleQuery, setRoleQuery] = useState("");
+  const [selectedRole, setSelectedRole] = useState<BlocksRole>();
   const [selectedPrincipalId, setSelectedPrincipalId] = useState("");
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
+  // Users and roles are both searched live against IAM (rather than a role
+  // picklist loaded in full up front) so a project with hundreds of either
+  // stays fast to search and never truncates silently at a fixed page size.
   const usersQuery = useQuery({
     enabled: principalType === "User" && userQuery.trim().length > 1,
     queryFn: () => searchUsers(userQuery),
     queryKey: ["vault", "principals", "users", userQuery]
   });
   const rolesQuery = useQuery({
-    enabled: principalType === "Role",
-    queryFn: listRoles,
-    queryKey: ["vault", "principals", "roles"]
+    enabled: principalType === "Role" && roleQuery.trim().length > 1,
+    queryFn: () => searchRoles(roleQuery),
+    queryKey: ["vault", "principals", "roles", roleQuery]
   });
   const orgsQuery = useQuery({
     enabled: principalType === "Organization",
@@ -41,10 +50,14 @@ export function ShareDialog({ object, onClose }: { object: VaultObject; onClose:
 
   useEffect(() => {
     setSelectedUser(undefined);
+    setSelectedRole(undefined);
     setSelectedPrincipalId("");
+    setUserQuery("");
+    setRoleQuery("");
   }, [principalType]);
 
-  const principalId = principalType === "User" ? selectedUser?.itemId : selectedPrincipalId;
+  const principalId =
+    principalType === "User" ? selectedUser?.itemId : principalType === "Role" ? selectedRole?.itemId : selectedPrincipalId;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -124,15 +137,37 @@ export function ShareDialog({ object, onClose }: { object: VaultObject; onClose:
           ) : null}
 
           {principalType === "Role" ? (
-            <label className="form-field">
-              <span>Role</span>
-              <select value={selectedPrincipalId} onChange={(event) => setSelectedPrincipalId(event.target.value)}>
-                <option value="" disabled>{rolesQuery.isLoading ? "Loading roles..." : "Choose a role"}</option>
-                {rolesQuery.data?.map((role) => (
-                  <option key={role.itemId} value={role.itemId}>{role.name ?? role.slug}</option>
-                ))}
-              </select>
-            </label>
+            <div className="form-field">
+              <span>Find a role</span>
+              <input
+                type="search"
+                placeholder="Search roles by name"
+                value={selectedRole ? roleLabel(selectedRole) : roleQuery}
+                onChange={(event) => {
+                  setSelectedRole(undefined);
+                  setRoleQuery(event.target.value);
+                }}
+              />
+              {!selectedRole && roleQuery.trim().length > 1 ? (
+                <div className="share-user-results">
+                  {rolesQuery.isLoading ? <p className="muted">Searching...</p> : null}
+                  {rolesQuery.data?.length === 0 ? <p className="muted">No matching roles.</p> : null}
+                  {rolesQuery.data?.map((role) => (
+                    <button
+                      type="button"
+                      key={role.itemId}
+                      className="share-user-result"
+                      onClick={() => {
+                        setSelectedRole(role);
+                        setRoleQuery("");
+                      }}
+                    >
+                      {roleLabel(role)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           ) : null}
 
           {principalType === "Organization" ? (

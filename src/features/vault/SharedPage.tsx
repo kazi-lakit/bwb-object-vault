@@ -6,13 +6,16 @@ import { PageHeader } from "../../shared/ui/PageHeader";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { ErrorState } from "../../shared/ui/ErrorState";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
-import { ListSkeleton } from "../../shared/ui/ListSkeleton";
+import { GridSkeleton, ListSkeleton } from "../../shared/ui/ListSkeleton";
+import { ViewToggle } from "../../shared/ui/ViewToggle";
 import { useToast } from "../../shared/ui/toast";
 import { useDirectoryListing, useSharedWithMe } from "./useDirectoryListing";
+import { useViewMode } from "./useViewMode";
 import { deleteObject, getFileDownloadUrl } from "./vaultApi";
 import { resourceTypeOf, type PathEntry, type VaultObject } from "./types";
 import { Breadcrumbs } from "./components/Breadcrumbs";
 import { VaultObjectList } from "./components/VaultObjectList";
+import { VaultObjectGrid } from "./components/VaultObjectGrid";
 import { ShareDialog } from "./components/ShareDialog";
 import { PreviewModal } from "./components/PreviewModal";
 
@@ -24,6 +27,7 @@ export function SharedPage() {
   const [previewing, setPreviewing] = useState<VaultObject>();
   const [sharing, setSharing] = useState<VaultObject>();
   const [deleting, setDeleting] = useState<VaultObject>();
+  const [viewMode, setViewMode] = useViewMode();
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -71,11 +75,16 @@ export function SharedPage() {
 
   return (
     <section>
-      <PageHeader title="Shared with me" subtitle="Files and folders other people or organizations shared with you." />
+      <PageHeader icon={<Share2 size={20} />} title="Shared with me" subtitle="Files and folders other people or organizations shared with you." />
+
+      <div className="toolbar">
+        <span />
+        <ViewToggle value={viewMode} onChange={setViewMode} />
+      </div>
 
       {!atRoot ? <Breadcrumbs path={path} onNavigate={(index) => setPath((current) => current.slice(0, index + 1))} /> : null}
 
-      {listing.isLoading ? <ListSkeleton /> : null}
+      {listing.isLoading ? (viewMode === "grid" ? <GridSkeleton /> : <ListSkeleton />) : null}
       {listing.isError ? (
         <ErrorState message={listing.error instanceof Error ? listing.error.message : "Could not load shared items."} onRetry={() => listing.refetch()} />
       ) : null}
@@ -87,14 +96,25 @@ export function SharedPage() {
         />
       ) : null}
       {listing.items.length > 0 ? (
-        <VaultObjectList
-          items={listing.items}
-          onOpen={openFolder}
-          onPreview={setPreviewing}
-          onDownload={handleDownload}
-          onShare={setSharing}
-          onDelete={setDeleting}
-        />
+        viewMode === "grid" ? (
+          <VaultObjectGrid
+            items={listing.items}
+            onOpen={openFolder}
+            onPreview={setPreviewing}
+            onDownload={handleDownload}
+            onShare={setSharing}
+            onDelete={setDeleting}
+          />
+        ) : (
+          <VaultObjectList
+            items={listing.items}
+            onOpen={openFolder}
+            onPreview={setPreviewing}
+            onDownload={handleDownload}
+            onShare={setSharing}
+            onDelete={setDeleting}
+          />
+        )
       ) : null}
       {listing.hasNextPage ? (
         <div className="pagination">

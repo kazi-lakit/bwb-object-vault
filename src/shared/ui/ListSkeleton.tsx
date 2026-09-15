@@ -35,3 +35,19 @@ export function ListSkeleton({ rows = 6 }: { rows?: number }) {
     </div>
   );
 }
+
+export function GridSkeleton({ tiles = 8 }: { tiles?: number }) {
+  return (
+    <div className="vault-grid">
+      {Array.from({ length: tiles }, (_, index) => (
+        <div key={index} className="vault-grid-card">
+          <div className="vault-grid-open">
+            <Skeleton className="skeleton-icon-lg" />
+            <Skeleton className="skeleton-line" style={{ width: 90 + (index % 3) * 20 }} />
+            <Skeleton className="skeleton-line" style={{ height: 11, width: 48 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
