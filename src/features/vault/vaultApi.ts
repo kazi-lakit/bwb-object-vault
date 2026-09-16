@@ -1,4 +1,5 @@
 import { blocksClient } from "../../lib/blocks/client";
+import { blocksFiles, type VerificationStatus } from "../../lib/blocks/storage";
 import type { BlocksRole, BlocksUser } from "@seliseblocks/client";
 import type { VaultObject, VaultPermission, VaultPrincipalType, VaultResourceType } from "./types";
 
@@ -6,6 +7,20 @@ const CONFIGURATION_NAME = "Default";
 const PAGE_LIMIT = 60;
 
 export class VaultError extends Error {}
+
+const REJECTION_MESSAGES: Record<string, string> = {
+  actual_size_does_not_match_declared_size: "The uploaded file didn't match its expected size. Please try again.",
+  actual_size_exceeds_maximum_allowed: "This file is larger than the maximum allowed size.",
+  candidate_object_not_found: "The upload couldn't be verified due to a server-side issue. Please try again.",
+  checksum_mismatch: "The uploaded file may be corrupted because its checksum did not match. Please try again.",
+  quarantine_key_missing: "The upload couldn't be verified due to a server-side issue. Please try again.",
+  quarantine_object_not_found: "The upload didn't finish reaching storage. Please try again.",
+  real_file_type_does_not_match_extension: "The file's contents don't match its extension and were rejected for safety.",
+  stored_content_type_does_not_match_declared_content_type: "The uploaded file's type didn't match what was declared. Please try again."
+};
+
+export type ObjectAccessLevel = "Creator" | "Organization";
+export type StorageAccessModifier = "Private" | "Public";
 
 function assertSuccess(response: unknown, fallbackMessage: string): asserts response is Record<string, unknown> {
   if (!response || typeof response !== "object") throw new VaultError(fallbackMessage);
@@ -30,6 +45,34 @@ function extractDownloadUrl(response: unknown): string | undefined {
   return undefined;
 }
 
+function readString(response: unknown, key: string): string | undefined {
+  if (!response || typeof response !== "object") return undefined;
+  const record = response as Record<string, unknown>;
+  if (typeof record[key] === "string") return record[key] as string;
+  return record.data && typeof record.data === "object" ? readString(record.data, key) : undefined;
+}
+
+function rejectionMessage(reason?: string | null): string {
+  return reason && REJECTION_MESSAGES[reason]
+    ? REJECTION_MESSAGES[reason]
+    : "This upload was rejected during verification. Please try again.";
+}
+
+async function computeChecksum(file: File): Promise<{ checksum: string; checksumAlgorithm: "SHA256" } | undefined> {
+  try {
+    if (!crypto.subtle) return undefined;
+    const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return {
+      checksum: Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join(""),
+      checksumAlgorithm: "SHA256"
+    };
+  } catch {
+    // Checksums strengthen verification but are optional. Browsers without a
+    // secure crypto context can still use server-side size/type verification.
+    return undefined;
+  }
+}
+
 export async function listObjects(params: {
   cursor?: string;
   limit?: number;
@@ -51,17 +94,24 @@ export async function listTrash(params: { cursor?: string; limit?: number }) {
   return blocksClient.data.objects.trash({ limit: PAGE_LIMIT, ...params });
 }
 
-export async function createFolder(params: { description?: string; name: string; parentDirectoryId?: string }): Promise<{ directoryId: string }> {
+export async function createFolder(params: {
+  description?: string;
+  name: string;
+  objectAccessLevel?: ObjectAccessLevel;
+  parentDirectoryId?: string;
+}): Promise<{ directoryId: string }> {
   const name = params.name.trim();
   if (!name || name === "." || name === ".." || /[/\\]/.test(name)) {
     throw new VaultError("Folder name can't be empty, \".\", \"..\", or contain a slash.");
   }
-  const response = await blocksClient.data.directories.create({
+  const request = {
     configurationName: CONFIGURATION_NAME,
     description: params.description,
     name,
+    objectAccessLevel: params.objectAccessLevel ?? "Creator",
     parentDirectoryId: params.parentDirectoryId
-  });
+  };
+  const response = await blocksClient.data.directories.create(request);
   assertSuccess(response, "Could not create the folder.");
   const { directoryId } = response as { directoryId?: string };
   if (!directoryId) throw new VaultError("Folder was created but no id was returned.");
@@ -95,24 +145,54 @@ export async function makePrivate(params: { ownerId: string; resourceId: string;
 }
 
 export async function uploadFile(params: {
+  accessModifier?: StorageAccessModifier;
   file: File;
+  objectAccessLevel?: ObjectAccessLevel;
   parentDirectoryId?: string;
 }): Promise<{ fileId: string }> {
-  const presign = await blocksClient.data.files.presignedUploadUrl({
-    accessModifier: "Private",
+  const contentType = params.file.type || "application/octet-stream";
+  const checksum = await computeChecksum(params.file);
+  const presign = await blocksFiles.presignedUploadUrl({
+    accessModifier: params.accessModifier ?? "Private",
+    additionalProperties: {
+      lastModified: new Date(params.file.lastModified).toISOString(),
+      mimeType: params.file.type || "application/octet-stream",
+      originalName: params.file.name
+    },
+    checksum: checksum?.checksum,
+    checksumAlgorithm: checksum?.checksumAlgorithm,
     configurationName: CONFIGURATION_NAME,
-    contentType: params.file.type || "application/octet-stream",
+    // The 0.2.0 SDK's upload normalizer currently drops lower-camel
+    // `contentType`; keep the wire field explicitly until the typed client
+    // includes the completion contract.
+    ContentType: contentType,
     name: params.file.name,
-    parentDirectoryId: params.parentDirectoryId
+    objectAccessLevel: params.objectAccessLevel ?? "Creator",
+    parentDirectoryId: params.parentDirectoryId,
+    sizeInBytes: params.file.size
   });
   assertSuccess(presign, "Could not start the upload.");
-  const { uploadUrl, fileId } = presign as { fileId?: string; uploadUrl?: string };
+  const {
+    fileId,
+    fileVersionId,
+    requiredHeaders,
+    uploadCompletionRequired,
+    uploadUrl
+  } = presign as {
+    fileId?: string;
+    fileVersionId?: string;
+    requiredHeaders?: Record<string, string>;
+    uploadCompletionRequired?: boolean;
+    uploadUrl?: string;
+    verificationStatus?: VerificationStatus;
+  };
   if (!uploadUrl || !fileId) throw new VaultError("Upload did not return a destination URL.");
 
   try {
-    await blocksClient.data.files.uploadToUrl({
+    await blocksFiles.uploadToUrl({
       body: params.file,
-      contentType: params.file.type || "application/octet-stream",
+      contentType,
+      headers: requiredHeaders,
       url: uploadUrl
     });
   } catch {
@@ -122,13 +202,29 @@ export async function uploadFile(params: {
     throw new VaultError(`"${params.file.name}" was registered but its content failed to upload. Delete it and try again.`);
   }
 
+  if (uploadCompletionRequired) {
+    if (!fileVersionId) {
+      throw new VaultError(`"${params.file.name}" uploaded, but completion was required and no file version id was returned.`);
+    }
+    const completion = await blocksFiles.completeUpload({ fileId, fileVersionId });
+    assertSuccess(completion, `Could not complete "${params.file.name}".`);
+    if (completion.verificationStatus === "Rejected") {
+      throw new VaultError(rejectionMessage(completion.rejectionReason));
+    }
+  }
+
   return { fileId };
 }
 
 export async function getFileDownloadUrl(fileId: string): Promise<string> {
   const response = await blocksClient.data.files.get(fileId, { configurationName: CONFIGURATION_NAME });
   const url = extractDownloadUrl(response);
-  if (!url) throw new VaultError("No download link was returned for this file.");
+  if (!url) {
+    const status = readString(response, "verificationStatus");
+    if (status === "Quarantined") throw new VaultError("This file is still being verified and isn't available yet.");
+    if (status === "Rejected") throw new VaultError("This file failed verification and can't be downloaded.");
+    throw new VaultError("No download link was returned for this file.");
+  }
   return url;
 }
 

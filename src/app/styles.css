@@ -336,6 +336,23 @@ tbody tr:last-child td { border-bottom: 0; }
 .upload-task-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upload-task-error { color: hsl(var(--destructive)); font-size: 12px; }
 .spinner-sm { border-width: 2px; height: 16px; width: 16px; }
+.upload-picker { align-items: center; background: transparent; border: 1px dashed hsl(var(--border)); border-radius: var(--radius); color: hsl(var(--muted-foreground)); display: flex; gap: 8px; justify-content: center; min-height: 58px; width: 100%; }
+.upload-picker:hover:not(:disabled) { background: hsl(var(--secondary)); border-color: hsl(var(--primary) / 0.55); color: hsl(var(--foreground)); }
+.upload-file-list { display: grid; gap: 5px; list-style: none; margin: 0; max-height: 150px; overflow-y: auto; padding: 0; }
+.upload-file-list li { align-items: center; border-radius: var(--radius); display: flex; gap: 9px; padding: 7px 8px; }
+.upload-file-list li:hover { background: hsl(var(--secondary) / 0.65); }
+.upload-file-list > li > svg { color: hsl(var(--muted-foreground)); flex-shrink: 0; }
+.upload-file-info { display: grid; flex: 1; min-width: 0; }
+.upload-file-info span { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upload-file-info small { color: hsl(var(--muted-foreground)); font-size: 11px; }
+.upload-file-info .upload-file-error { color: hsl(var(--destructive)); }
+.upload-file-info small:not(:only-child) { overflow-wrap: anywhere; }
+.upload-choice { display: grid; gap: 7px; }
+.upload-choice > span { color: hsl(var(--muted-foreground)); font-size: 12px; font-weight: 700; }
+.upload-choice > small { color: hsl(var(--muted-foreground)); font-size: 12px; line-height: 1.4; }
+.upload-choice-buttons { background: hsl(var(--secondary) / 0.7); border-radius: var(--radius); display: grid; grid-template-columns: repeat(2, 1fr); padding: 3px; }
+.upload-choice-buttons button { background: transparent; border: 0; border-radius: calc(var(--radius) - 3px); color: hsl(var(--muted-foreground)); font-weight: 600; min-height: 34px; }
+.upload-choice-buttons button.active { background: hsl(var(--card)); box-shadow: var(--shadow-sm); color: hsl(var(--primary)); }
 
 .modal-form { display: grid; gap: 14px; }
 .share-user-results { border: 1px solid hsl(var(--border)); border-radius: var(--radius); display: grid; margin-top: 6px; max-height: 180px; overflow-y: auto; }
