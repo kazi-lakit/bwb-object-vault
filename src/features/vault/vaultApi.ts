@@ -22,6 +22,20 @@ const REJECTION_MESSAGES: Record<string, string> = {
 export type ObjectAccessLevel = "Creator" | "Organization";
 export type StorageAccessModifier = "Private" | "Public";
 
+export type VaultAccessPolicy = {
+  effect?: "Allow" | "Deny";
+  expiresAt?: string;
+  organizationId?: string;
+  permission: VaultPermission;
+  policyItemId: string;
+  principalId?: string;
+  principalName?: string;
+  principalType: VaultPrincipalType;
+  priority?: number;
+  resourceId?: string;
+  resourceType?: VaultResourceType;
+};
+
 function assertSuccess(response: unknown, fallbackMessage: string): asserts response is Record<string, unknown> {
   if (!response || typeof response !== "object") throw new VaultError(fallbackMessage);
   const record = response as Record<string, unknown>;
@@ -326,6 +340,7 @@ export async function purgeObject(resourceId: string): Promise<void> {
 }
 
 export async function shareObject(params: {
+  organizationId?: string;
   permission: VaultPermission;
   principalId?: string;
   principalType: VaultPrincipalType;
@@ -335,6 +350,88 @@ export async function shareObject(params: {
   const response = await blocksClient.data.objects.share(params);
   assertSuccess(response, "Could not share this item.");
   return response;
+}
+
+function accessPolicyList(response: unknown): unknown[] {
+  if (Array.isArray(response)) return response;
+  if (!response || typeof response !== "object") return [];
+  const record = response as Record<string, unknown>;
+  if (Array.isArray(record.data)) return record.data;
+  if (Array.isArray(record.items)) return record.items;
+  if (Array.isArray(record.policies)) return record.policies;
+  if (record.data && typeof record.data === "object") return accessPolicyList(record.data);
+  return [];
+}
+
+export async function listAccessPolicies(resourceId: string): Promise<VaultAccessPolicy[]> {
+  const response = await blocksClient.data.objects.accessPolicies(resourceId);
+  assertSuccess(response, "Could not load existing access.");
+  return accessPolicyList(response).flatMap((entry): VaultAccessPolicy[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as Record<string, unknown>;
+    const policyItemId = String(row.policyItemId ?? row.itemId ?? row.id ?? "");
+    if (!policyItemId) return [];
+    return [{
+      effect: row.effect === "Deny" ? "Deny" : "Allow",
+      expiresAt: typeof row.expiresAt === "string" ? row.expiresAt : undefined,
+      organizationId: typeof row.organizationId === "string" ? row.organizationId : undefined,
+      permission: (row.permission ?? "View") as VaultPermission,
+      policyItemId,
+      principalId: typeof row.principalId === "string" ? row.principalId : undefined,
+      principalName: typeof row.principalName === "string" ? row.principalName : undefined,
+      principalType: (row.principalType ?? "User") as VaultPrincipalType,
+      priority: typeof row.priority === "number" ? row.priority : undefined,
+      resourceId: typeof row.resourceId === "string" ? row.resourceId : resourceId,
+      resourceType: row.resourceType as VaultResourceType | undefined
+    }];
+  });
+}
+
+export async function updateAccessPolicy(policy: VaultAccessPolicy, permission: VaultPermission, resourceType: VaultResourceType): Promise<void> {
+  const request = {
+    effect: policy.effect ?? "Allow",
+    organizationId: policy.organizationId,
+    permission,
+    policyItemId: policy.policyItemId,
+    principalId: policy.principalId,
+    principalType: policy.principalType,
+    priority: policy.priority ?? 0,
+    resourceId: policy.resourceId!,
+    resourceType
+  };
+  const response = await blocksClient.data.objects.updateAccess(request);
+  assertSuccess(response, "Could not update access.");
+}
+
+export async function revokeAccessPolicy(resourceId: string, policyItemId: string): Promise<void> {
+  const response = await blocksClient.data.objects.revokeAccess({ policyItemId, resourceId });
+  assertSuccess(response, "Could not remove access.");
+}
+
+export async function describeAccessPrincipal(policy: VaultAccessPolicy): Promise<{ primary: string; secondary: string }> {
+  if (policy.principalType === "Everyone") return { primary: policy.principalName || "Everyone", secondary: "Everyone" };
+  if (!policy.principalId) return { primary: policy.principalName || "Unknown principal", secondary: policy.principalType };
+
+  if (policy.principalType === "User") {
+    const response = await blocksClient.iam.users.get(policy.principalId, { organizationId: policy.organizationId });
+    const user = response.data;
+    const name = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim();
+    return { primary: name || user?.email || policy.principalName || policy.principalId, secondary: user?.email || "User" };
+  }
+
+  if (policy.principalType === "Role") {
+    const [roleResponse, organizationResponse] = await Promise.all([
+      blocksClient.iam.roles.get(policy.principalId),
+      policy.organizationId ? blocksClient.iam.organizations.get(policy.organizationId) : Promise.resolve(undefined)
+    ]);
+    return {
+      primary: roleResponse.data?.name || policy.principalName || policy.principalId,
+      secondary: organizationResponse?.data?.name ? `Role in ${organizationResponse.data.name}` : "Role"
+    };
+  }
+
+  const response = await blocksClient.iam.organizations.get(policy.principalId);
+  return { primary: response.data?.name || policy.principalName || policy.principalId, secondary: "Organization" };
 }
 
 export async function searchUsers(search: string): Promise<BlocksUser[]> {
