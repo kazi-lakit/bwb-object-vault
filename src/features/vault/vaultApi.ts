@@ -420,12 +420,13 @@ export async function describeAccessPrincipal(policy: VaultAccessPolicy): Promis
   }
 
   if (policy.principalType === "Role") {
-    const [roleResponse, organizationResponse] = await Promise.all([
-      blocksClient.iam.roles.get(policy.principalId),
+    const [roles, organizationResponse] = await Promise.all([
+      searchRoles(policy.principalId),
       policy.organizationId ? blocksClient.iam.organizations.get(policy.organizationId) : Promise.resolve(undefined)
     ]);
+    const role = roles.find((candidate) => candidate.slug === policy.principalId || candidate.itemId === policy.principalId);
     return {
-      primary: roleResponse.data?.name || policy.principalName || policy.principalId,
+      primary: role?.name || policy.principalName || policy.principalId,
       secondary: organizationResponse?.data?.name ? `Role in ${organizationResponse.data.name}` : "Role"
     };
   }

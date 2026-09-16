@@ -92,7 +92,7 @@ export function ShareDialog({ object, onClose }: { object: VaultObject; onClose:
     ? selectedUser?.itemId
     : principalType === "Organization"
       ? selectedOrganizationId
-      : selectedRole?.itemId;
+      : selectedRole?.slug;
   const organizationId = principalType === "OrganizationRole" ? selectedOrganizationId : undefined;
 
   async function refreshPolicies() {
