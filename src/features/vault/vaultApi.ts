@@ -47,6 +47,10 @@ export async function listSharedWithMe(params: { cursor?: string; limit?: number
   return blocksClient.data.objects.shared({ limit: PAGE_LIMIT, ...params });
 }
 
+export async function listTrash(params: { cursor?: string; limit?: number }) {
+  return blocksClient.data.objects.trash({ limit: PAGE_LIMIT, ...params });
+}
+
 export async function createFolder(params: { description?: string; name: string; parentDirectoryId?: string }): Promise<{ directoryId: string }> {
   const name = params.name.trim();
   if (!name || name === "." || name === ".." || /[/\\]/.test(name)) {
@@ -128,11 +132,101 @@ export async function getFileDownloadUrl(fileId: string): Promise<string> {
   return url;
 }
 
+export async function getFileVersionDownloadUrl(fileId: string, version: number): Promise<string> {
+  const response = await blocksClient.data.files.get(fileId, {
+    configurationName: CONFIGURATION_NAME,
+    version
+  });
+  const url = extractDownloadUrl(response);
+  if (!url) throw new VaultError(`No download link was returned for version ${version}.`);
+  return url;
+}
+
+export type VaultFileVersion = {
+  createdDate?: string;
+  itemId: string;
+  no: number;
+  sizeInBytes?: number;
+  uploadedBy?: string;
+};
+
+export type VaultFileVersionsPage = {
+  hasMore: boolean;
+  items: VaultFileVersion[];
+  nextCursor?: string;
+};
+
+export async function listFileVersions(params: { cursor?: string; fileId: string; limit?: number }): Promise<VaultFileVersionsPage> {
+  const response = await blocksClient.data.files.versions({ limit: 25, ...params });
+  assertSuccess(response, "Could not load version history.");
+  const record = response as Record<string, unknown>;
+  const rawItems = Array.isArray(record.items)
+    ? record.items
+    : record.data && typeof record.data === "object" && Array.isArray((record.data as Record<string, unknown>).items)
+      ? (record.data as Record<string, unknown>).items as unknown[]
+      : [];
+  const items = rawItems.flatMap((raw): VaultFileVersion[] => {
+    if (!raw || typeof raw !== "object") return [];
+    const version = raw as Record<string, unknown>;
+    const no = Number(version.no ?? version.versionNo ?? version.version);
+    if (!Number.isFinite(no)) return [];
+    return [{
+      createdDate: typeof version.createdDate === "string" ? version.createdDate : undefined,
+      itemId: String(version.itemId ?? version.fileVersionId ?? `${params.fileId}-${no}`),
+      no,
+      sizeInBytes: typeof version.sizeInBytes === "number" ? version.sizeInBytes : undefined,
+      uploadedBy: typeof version.uploadedBy === "string" ? version.uploadedBy : undefined
+    }];
+  });
+  return {
+    hasMore: record.hasMore === true,
+    items,
+    nextCursor: typeof record.nextCursor === "string" ? record.nextCursor : undefined
+  };
+}
+
+export async function renameObject(params: { object: VaultObject; name: string }): Promise<void> {
+  const name = params.name.trim();
+  if (!name || name === "." || name === ".." || /[/\\]/.test(name)) {
+    throw new VaultError("Name can't be empty, \".\", \"..\", or contain a slash.");
+  }
+  const response = params.object.type === "directory"
+    ? await blocksClient.data.directories.update({ directoryId: params.object.itemId, name })
+    : await blocksClient.data.files.rename({ fileId: params.object.itemId, name });
+  assertSuccess(response, `Could not rename "${params.object.name}".`);
+}
+
+export async function moveObject(params: { object: VaultObject; targetDirectoryId: string }): Promise<void> {
+  const response = params.object.type === "directory"
+    ? await blocksClient.data.directories.move({ directoryId: params.object.itemId, targetDirectoryId: params.targetDirectoryId })
+    : await blocksClient.data.files.move({ fileId: params.object.itemId, targetDirectoryId: params.targetDirectoryId });
+  assertSuccess(response, `Could not move "${params.object.name}".`);
+}
+
+export async function copyFile(params: { fileId: string; targetDirectoryId: string }): Promise<void> {
+  const response = await blocksClient.data.files.copy({
+    copyAccessPolicies: false,
+    fileId: params.fileId,
+    targetDirectoryId: params.targetDirectoryId
+  });
+  assertSuccess(response, "Could not copy the file.");
+}
+
 export async function deleteObject(params: { permanent?: boolean; resourceId: string; resourceType: VaultResourceType }) {
   if (params.resourceType === "File") {
     return blocksClient.data.files.delete({ configurationName: CONFIGURATION_NAME, fileId: params.resourceId, permanent: params.permanent ?? false });
   }
   return blocksClient.data.directories.delete({ directoryId: params.resourceId, permanent: params.permanent ?? false });
+}
+
+export async function restoreObject(resourceId: string): Promise<void> {
+  const response = await blocksClient.data.objects.restore({ resourceId });
+  assertSuccess(response, "Could not restore this item.");
+}
+
+export async function purgeObject(resourceId: string): Promise<void> {
+  const response = await blocksClient.data.objects.deleteFromTrash({ resourceId });
+  assertSuccess(response, "Could not permanently delete this item.");
 }
 
 export async function shareObject(params: {

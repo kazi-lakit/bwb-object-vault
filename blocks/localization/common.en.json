@@ -1,5 +1,5 @@
 {
-  "app.name": "Blocks App",
+  "app.name": "BLX Drive",
   "auth.back": "Back to sign in",
   "auth.continue": "Continue with Blocks",
   "auth.failed": "Sign-in failed",
@@ -15,6 +15,10 @@
   "save": "Save",
   "nav.logout": "Log out",
   "nav.profile": "Profile",
+  "nav.myDrive": "My Drive",
+  "nav.shared": "Shared",
+  "nav.systemFiles": "System Files",
+  "nav.trash": "Trash",
   "notFound.home": "Back home",
   "notFound.message": "This page does not exist.",
   "notFound.title": "404",

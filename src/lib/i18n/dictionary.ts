@@ -1,8 +1,9 @@
 export const defaultDictionary = {
-  "app.name": "Blocks App",
+  "app.name": "BLX Drive",
   "nav.myDrive": "My Drive",
   "nav.shared": "Shared",
   "nav.systemFiles": "System Files",
+  "nav.trash": "Trash",
   "nav.profile": "Profile",
   "nav.logout": "Log out",
   "auth.welcome": "Welcome back",

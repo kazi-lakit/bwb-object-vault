@@ -14,7 +14,7 @@ import { useToast } from "../../shared/ui/toast";
 import { useDriveSetup } from "./useDriveSetup";
 import { useDirectoryListing } from "./useDirectoryListing";
 import { useViewMode } from "./useViewMode";
-import { createFolder, deleteObject, getFileDownloadUrl, uploadFile } from "./vaultApi";
+import { copyFile, createFolder, deleteObject, getFileDownloadUrl, moveObject, renameObject, uploadFile } from "./vaultApi";
 import { resourceTypeOf, type PathEntry, type VaultObject } from "./types";
 import { Breadcrumbs } from "./components/Breadcrumbs";
 import { VaultObjectList } from "./components/VaultObjectList";
@@ -24,6 +24,9 @@ import { UploadButton } from "./components/UploadButton";
 import { ShareDialog } from "./components/ShareDialog";
 import { PreviewModal } from "./components/PreviewModal";
 import { DriveSetupScreen } from "./components/DriveSetupScreen";
+import { RenameDialog } from "./components/RenameDialog";
+import { DestinationPickerDialog } from "./components/DestinationPickerDialog";
+import { VersionHistoryDialog } from "./components/VersionHistoryDialog";
 
 export function VaultPage() {
   const driveSetup = useDriveSetup();
@@ -34,6 +37,9 @@ export function VaultPage() {
   const [previewing, setPreviewing] = useState<VaultObject>();
   const [sharing, setSharing] = useState<VaultObject>();
   const [deleting, setDeleting] = useState<VaultObject>();
+  const [renaming, setRenaming] = useState<VaultObject>();
+  const [versions, setVersions] = useState<VaultObject>();
+  const [transfer, setTransfer] = useState<{ mode: "move" | "copy"; object: VaultObject }>();
   const [isDragging, setIsDragging] = useState(false);
   const [viewMode, setViewMode] = useViewMode();
   const queryClient = useQueryClient();
@@ -52,6 +58,10 @@ export function VaultPage() {
 
   function invalidateListing() {
     void queryClient.invalidateQueries({ queryKey: ["vault", "objects", currentDirectoryId] });
+  }
+
+  function invalidateAllListings() {
+    void queryClient.invalidateQueries({ queryKey: ["vault", "objects"] });
   }
 
   function openFolder(item: VaultObject) {
@@ -164,6 +174,10 @@ export function VaultPage() {
               onOpen={openFolder}
               onPreview={setPreviewing}
               onDownload={handleDownload}
+              onVersions={setVersions}
+              onRename={setRenaming}
+              onMove={(object) => setTransfer({ mode: "move", object })}
+              onCopy={(object) => setTransfer({ mode: "copy", object })}
               onShare={setSharing}
               onDelete={setDeleting}
             />
@@ -173,6 +187,10 @@ export function VaultPage() {
               onOpen={openFolder}
               onPreview={setPreviewing}
               onDownload={handleDownload}
+              onVersions={setVersions}
+              onRename={setRenaming}
+              onMove={(object) => setTransfer({ mode: "move", object })}
+              onCopy={(object) => setTransfer({ mode: "copy", object })}
               onShare={setSharing}
               onDelete={setDeleting}
             />
@@ -199,7 +217,34 @@ export function VaultPage() {
       ) : null}
 
       {previewing ? <PreviewModal object={previewing} onClose={() => setPreviewing(undefined)} /> : null}
+      {versions ? <VersionHistoryDialog object={versions} onClose={() => setVersions(undefined)} /> : null}
       {sharing ? <ShareDialog object={sharing} onClose={() => setSharing(undefined)} /> : null}
+      {renaming ? (
+        <RenameDialog
+          object={renaming}
+          onClose={() => setRenaming(undefined)}
+          onRename={async (name) => {
+            await renameObject({ name, object: renaming });
+            invalidateListing();
+            toast.success(`Renamed to "${name}".`);
+          }}
+        />
+      ) : null}
+      {transfer && driveSetup.rootDirectoryId ? (
+        <DestinationPickerDialog
+          object={transfer.object}
+          mode={transfer.mode}
+          rootDirectoryId={driveSetup.rootDirectoryId}
+          rootName="My Drive"
+          onClose={() => setTransfer(undefined)}
+          onConfirm={async (targetDirectoryId) => {
+            if (transfer.mode === "move") await moveObject({ object: transfer.object, targetDirectoryId });
+            else await copyFile({ fileId: transfer.object.itemId, targetDirectoryId });
+            invalidateAllListings();
+            toast.success(`"${transfer.object.name}" ${transfer.mode === "move" ? "moved" : "copied"}.`);
+          }}
+        />
+      ) : null}
       {deleting ? (
         <ConfirmDialog
           title={`Delete "${deleting.name}"?`}
