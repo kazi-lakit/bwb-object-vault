@@ -1,10 +1,10 @@
-import type { InputHTMLAttributes } from "react";
+import { forwardRef, type InputHTMLAttributes } from "react";
 
-export function FormField({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+export const FormField = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { label: string }>(function FormField({ label, ...props }, ref) {
   return (
     <label className="form-field">
       <span>{label}</span>
-      <input {...props} />
+      <input ref={ref} {...props} />
     </label>
   );
-}
+});

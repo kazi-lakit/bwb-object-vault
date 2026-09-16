@@ -9,11 +9,13 @@ import { ProfilePage } from "../../features/profile/ProfilePage";
 import { VaultPage } from "../../features/vault/VaultPage";
 import { SharedPage } from "../../features/vault/SharedPage";
 import { SystemFilesPage } from "../../features/vault/SystemFilesPage";
+import { TrashPage } from "../../features/vault/TrashPage";
 
 const protectedRoutes = {
   "/": VaultPage,
   "/shared": SharedPage,
   "/system-files": SystemFilesPage,
+  "/trash": TrashPage,
   "/profile": ProfilePage,
   "/error": ErrorPage
 };

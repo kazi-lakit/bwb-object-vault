@@ -63,15 +63,17 @@ export function iconColorClassFor(object: VaultObject): string {
   return (extension && COLOR_CLASS_BY_EXTENSION[extension]) || "vault-icon-file";
 }
 
-export function isPreviewable(object: VaultObject): "image" | "pdf" | undefined {
+export function isPreviewable(object: VaultObject): "audio" | "image" | "pdf" | "video" | undefined {
   const extension = object.extension?.replace(/^\./, "").toLowerCase();
   const contentType = object.contentType ?? "";
   if (contentType.startsWith("image/") || ["gif", "jpeg", "jpg", "png", "svg", "webp"].includes(extension ?? "")) return "image";
   if (contentType === "application/pdf" || extension === "pdf") return "pdf";
+  if (contentType.startsWith("video/") || ["mov", "mp4", "ogv", "webm"].includes(extension ?? "")) return "video";
+  if (contentType.startsWith("audio/") || ["m4a", "mp3", "ogg", "wav"].includes(extension ?? "")) return "audio";
   return undefined;
 }
 
-export function formatBytes(bytes: number): string {
+export function formatBytes(bytes?: number): string {
   if (!bytes) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
   const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
@@ -79,7 +81,8 @@ export function formatBytes(bytes: number): string {
   return `${exponent === 0 ? value : value.toFixed(1)} ${units[exponent]}`;
 }
 
-export function formatDate(iso: string): string {
+export function formatDate(iso?: string): string {
+  if (!iso) return "Unknown date";
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }

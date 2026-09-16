@@ -12,7 +12,7 @@ import { ViewToggle } from "../../shared/ui/ViewToggle";
 import { useToast } from "../../shared/ui/toast";
 import { useDirectoryListing } from "./useDirectoryListing";
 import { useViewMode } from "./useViewMode";
-import { createFolder, deleteObject, getFileDownloadUrl, uploadFile } from "./vaultApi";
+import { copyFile, createFolder, deleteObject, getFileDownloadUrl, moveObject, renameObject } from "./vaultApi";
 import { resourceTypeOf, type PathEntry, type VaultObject } from "./types";
 import { Breadcrumbs } from "./components/Breadcrumbs";
 import { VaultObjectList } from "./components/VaultObjectList";
@@ -21,6 +21,10 @@ import { NewFolderDialog } from "./components/NewFolderDialog";
 import { UploadButton } from "./components/UploadButton";
 import { ShareDialog } from "./components/ShareDialog";
 import { PreviewModal } from "./components/PreviewModal";
+import { RenameDialog } from "./components/RenameDialog";
+import { DestinationPickerDialog } from "./components/DestinationPickerDialog";
+import { VersionHistoryDialog } from "./components/VersionHistoryDialog";
+import { UploadOptionsDialog } from "./components/UploadOptionsDialog";
 
 const SYSTEM_ROOT: PathEntry = { id: undefined, name: "System Files" };
 
@@ -41,7 +45,11 @@ export function SystemFilesPage() {
   const [previewing, setPreviewing] = useState<VaultObject>();
   const [sharing, setSharing] = useState<VaultObject>();
   const [deleting, setDeleting] = useState<VaultObject>();
+  const [renaming, setRenaming] = useState<VaultObject>();
+  const [versions, setVersions] = useState<VaultObject>();
+  const [transfer, setTransfer] = useState<{ mode: "move" | "copy"; object: VaultObject }>();
   const [isDragging, setIsDragging] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<File[]>();
   const [viewMode, setViewMode] = useViewMode();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -56,6 +64,10 @@ export function SystemFilesPage() {
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ["vault", "objects", currentDirectoryId] });
+  }
+
+  function invalidateAllListings() {
+    void queryClient.invalidateQueries({ queryKey: ["vault", "objects"] });
   }
 
   function openFolder(item: VaultObject) {
@@ -84,12 +96,6 @@ export function SystemFilesPage() {
     }
   }
 
-  async function uploadDroppedFiles(files: FileList) {
-    if (!currentDirectoryId) return;
-    await Promise.allSettled(Array.from(files).map((file) => uploadFile({ file, parentDirectoryId: currentDirectoryId })));
-    invalidate();
-  }
-
   return (
     <section
       onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
@@ -97,7 +103,7 @@ export function SystemFilesPage() {
       onDrop={(event) => {
         event.preventDefault();
         setIsDragging(false);
-        if (event.dataTransfer.files.length > 0) void uploadDroppedFiles(event.dataTransfer.files);
+        if (event.dataTransfer.files.length > 0) setUploadFiles(Array.from(event.dataTransfer.files));
       }}
     >
       <PageHeader
@@ -107,7 +113,7 @@ export function SystemFilesPage() {
         actions={
           <>
             <ActionButton variant="icon" icon={<FolderPlus size={18} />} onClick={() => setShowNewFolder(true)} title="New folder" />
-            <UploadButton parentDirectoryId={currentDirectoryId} onUploaded={invalidate} />
+            <UploadButton disabled={!currentDirectoryId} onClick={() => setUploadFiles([])} />
           </>
         }
       />
@@ -138,6 +144,10 @@ export function SystemFilesPage() {
               onOpen={openFolder}
               onPreview={setPreviewing}
               onDownload={handleDownload}
+              onVersions={setVersions}
+              onRename={setRenaming}
+              onMove={(object) => setTransfer({ mode: "move", object })}
+              onCopy={(object) => setTransfer({ mode: "copy", object })}
               onShare={setSharing}
               onDelete={setDeleting}
             />
@@ -147,6 +157,10 @@ export function SystemFilesPage() {
               onOpen={openFolder}
               onPreview={setPreviewing}
               onDownload={handleDownload}
+              onVersions={setVersions}
+              onRename={setRenaming}
+              onMove={(object) => setTransfer({ mode: "move", object })}
+              onCopy={(object) => setTransfer({ mode: "copy", object })}
               onShare={setSharing}
               onDelete={setDeleting}
             />
@@ -165,15 +179,51 @@ export function SystemFilesPage() {
       {showNewFolder ? (
         <NewFolderDialog
           onClose={() => setShowNewFolder(false)}
-          onCreate={async (name) => {
-            await createFolder({ name, parentDirectoryId: currentDirectoryId });
+          onCreate={async (name, objectAccessLevel) => {
+            await createFolder({ name, objectAccessLevel, parentDirectoryId: currentDirectoryId });
             invalidate();
           }}
         />
       ) : null}
 
+      {uploadFiles && currentDirectoryId ? (
+        <UploadOptionsDialog
+          initialFiles={uploadFiles}
+          parentDirectoryId={currentDirectoryId}
+          onClose={() => setUploadFiles(undefined)}
+          onUploaded={invalidate}
+        />
+      ) : null}
+
       {previewing ? <PreviewModal object={previewing} onClose={() => setPreviewing(undefined)} /> : null}
+      {versions ? <VersionHistoryDialog object={versions} onClose={() => setVersions(undefined)} /> : null}
       {sharing ? <ShareDialog object={sharing} onClose={() => setSharing(undefined)} /> : null}
+      {renaming ? (
+        <RenameDialog
+          object={renaming}
+          onClose={() => setRenaming(undefined)}
+          onRename={async (name) => {
+            await renameObject({ name, object: renaming });
+            invalidate();
+            toast.success(`Renamed to "${name}".`);
+          }}
+        />
+      ) : null}
+      {transfer ? (
+        <DestinationPickerDialog
+          object={transfer.object}
+          mode={transfer.mode}
+          rootDirectoryId={SYSTEM_FILES_ROOT_ID}
+          rootName="System Files"
+          onClose={() => setTransfer(undefined)}
+          onConfirm={async (targetDirectoryId) => {
+            if (transfer.mode === "move") await moveObject({ object: transfer.object, targetDirectoryId });
+            else await copyFile({ fileId: transfer.object.itemId, targetDirectoryId });
+            invalidateAllListings();
+            toast.success(`"${transfer.object.name}" ${transfer.mode === "move" ? "moved" : "copied"}.`);
+          }}
+        />
+      ) : null}
       {deleting ? (
         <ConfirmDialog
           title={`Delete "${deleting.name}"?`}

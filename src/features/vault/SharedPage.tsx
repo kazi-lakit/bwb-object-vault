@@ -18,6 +18,7 @@ import { VaultObjectList } from "./components/VaultObjectList";
 import { VaultObjectGrid } from "./components/VaultObjectGrid";
 import { ShareDialog } from "./components/ShareDialog";
 import { PreviewModal } from "./components/PreviewModal";
+import { VersionHistoryDialog } from "./components/VersionHistoryDialog";
 
 const SHARED_ROOT: PathEntry = { id: undefined, name: "Shared with me" };
 
@@ -27,6 +28,7 @@ export function SharedPage() {
   const [previewing, setPreviewing] = useState<VaultObject>();
   const [sharing, setSharing] = useState<VaultObject>();
   const [deleting, setDeleting] = useState<VaultObject>();
+  const [versions, setVersions] = useState<VaultObject>();
   const [viewMode, setViewMode] = useViewMode();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -102,6 +104,7 @@ export function SharedPage() {
             onOpen={openFolder}
             onPreview={setPreviewing}
             onDownload={handleDownload}
+            onVersions={setVersions}
             onShare={setSharing}
             onDelete={setDeleting}
           />
@@ -111,6 +114,7 @@ export function SharedPage() {
             onOpen={openFolder}
             onPreview={setPreviewing}
             onDownload={handleDownload}
+            onVersions={setVersions}
             onShare={setSharing}
             onDelete={setDeleting}
           />
@@ -126,6 +130,7 @@ export function SharedPage() {
       ) : null}
 
       {previewing ? <PreviewModal object={previewing} onClose={() => setPreviewing(undefined)} /> : null}
+      {versions ? <VersionHistoryDialog object={versions} onClose={() => setVersions(undefined)} /> : null}
       {sharing ? <ShareDialog object={sharing} onClose={() => setSharing(undefined)} /> : null}
       {deleting ? (
         <ConfirmDialog

@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import type { BlocksStorageObjectsResponse } from "@seliseblocks/client";
-import { listObjects, listSharedWithMe, searchObjects } from "./vaultApi";
+import { listObjects, listSharedWithMe, listTrash, searchObjects } from "./vaultApi";
 import type { VaultObject } from "./types";
 
 function flatten(pages: BlocksStorageObjectsResponse[] | undefined): VaultObject[] {
@@ -36,6 +36,17 @@ export function useSharedWithMe() {
     initialPageParam: undefined,
     queryFn: ({ pageParam }) => listSharedWithMe({ cursor: pageParam }),
     queryKey: ["vault", "shared"]
+  });
+
+  return { ...query, items: flatten(query.data?.pages) };
+}
+
+export function useTrash() {
+  const query = useInfiniteQuery<BlocksStorageObjectsResponse, Error, { pages: BlocksStorageObjectsResponse[] }, unknown[], string | undefined>({
+    getNextPageParam: nextCursor,
+    initialPageParam: undefined,
+    queryFn: ({ pageParam }) => listTrash({ cursor: pageParam }),
+    queryKey: ["vault", "trash"]
   });
 
   return { ...query, items: flatten(query.data?.pages) };
